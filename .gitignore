@@ -3,4 +3,4 @@ scripts/settings.txt
 models/sd-v1-4-o.ckpt
 models/sd-v1-4.ckpt
 *.pyc
-src/taming-transformers
+src
