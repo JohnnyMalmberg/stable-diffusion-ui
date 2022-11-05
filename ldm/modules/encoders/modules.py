@@ -1,9 +1,11 @@
+import gc
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from functools import partial
 import clip
 from einops import rearrange, repeat
-from transformers import CLIPTokenizer, CLIPTextModel
+from transformers import CLIPTokenizer, CLIPTextModel, CLIPProcessor, CLIPModel#, CLIPConfig
 import kornia
 
 from ldm.modules.x_transformer import Encoder, TransformerWrapper  # TODO: can we directly rely on lucidrains code and simply add this as a reuirement? --> test
@@ -68,6 +70,7 @@ class BERTTokenizer(AbstractEncoder):
 
     @torch.no_grad()
     def encode(self, text):
+        print(f'BERT tokenizer running on {text}')
         tokens = self(text)
         if not self.vq_interface:
             return tokens
@@ -99,6 +102,7 @@ class BERTEmbedder(AbstractEncoder):
         return z
 
     def encode(self, text):
+        print(f'BERT embedder running on {text}')
         # output of length 77
         return self(text)
 
@@ -134,6 +138,103 @@ class SpatialRescaler(nn.Module):
     def encode(self, x):
         return self(x)
 
+# TODO: make this not reload the fuckin clip model every time lmao
+class PersonalizedCLIPEmbedder(AbstractEncoder):
+    """Uses the CLIP transformer encoder with the option of personalization with an aesthetic embedding"""
+
+    def __init__(
+        self,
+        version="openai/clip-vit-large-patch14",
+        device="cuda",
+        max_length=77,
+        T=5,
+        lr=0.0001,
+        aesthetic_embedding_path="aesthetic_embeddings/cloudcore.pt",
+    ):
+        super().__init__()
+        #self.clip_config = CLIPConfig.from_pretrained(version)
+        self.tokenizer = CLIPTokenizer.from_pretrained(version)
+        self.transformer = CLIPTextModel.from_pretrained(version)#, config=self.clip_config.text_config)
+        self.full_clip_processor = CLIPProcessor.from_pretrained(version)
+        self.device = device
+        self.max_length = max_length
+
+        self.T = T
+        self.lr = lr
+        self.aesthetic_embedding_path = aesthetic_embedding_path
+
+        self.freeze()
+
+    def freeze(self):
+        self.transformer = self.transformer.eval()
+        for param in self.parameters():
+            param.requires_grad = False
+
+    def forward(self, text):
+        with torch.enable_grad():
+            batch_encoding = self.tokenizer(
+                text,
+                truncation=True,
+                max_length=self.max_length,
+                return_length=True,
+                return_overflowing_tokens=False,
+                padding="max_length",
+                return_tensors="pt",
+            )
+            tokens = batch_encoding["input_ids"].to(self.device)
+
+            if text[0] != "" and self.T != 0:
+
+                # This is the model to be personalized
+                full_clip_model = CLIPModel.from_pretrained(
+                                        "openai/clip-vit-large-patch14",
+                                    ).to(self.device)
+
+                # We load the aesthetic embeddings
+                image_embs = torch.load(self.aesthetic_embedding_path).to(self.device)
+
+                # We compute the loss (similarity between the prompt embedding and the aesthetic embedding)
+                image_embs /= image_embs.norm(dim=-1, keepdim=True)
+                text_embs = full_clip_model.get_text_features(tokens)
+                text_embs /= text_embs.norm(dim=-1, keepdim=True)
+                sim = text_embs @ image_embs.T
+                loss = -sim
+
+                # lr = 0.0001
+
+                # We optimize the model to maximize the similarity
+                optimizer = optim.Adam(
+                    full_clip_model.text_model.parameters(), lr=self.lr
+                )
+
+                # T = 0
+                for i in range(self.T):
+                    if i % 5 == 0:
+                        torch.cuda.empty_cache()
+                        gc.collect()
+
+                    optimizer.zero_grad()
+
+                    loss.mean().backward()
+                    optimizer.step()
+
+                    text_embs = full_clip_model.get_text_features(tokens)
+                    text_embs /= text_embs.norm(dim=-1, keepdim=True)
+                    sim = text_embs @ image_embs.T
+                    loss = -sim
+
+                z = full_clip_model.text_model(input_ids=tokens).last_hidden_state.detach()
+                full_clip_model.cpu()
+                del full_clip_model, optimizer, batch_encoding
+            else:
+                z = self.transformer(input_ids=tokens).last_hidden_state
+
+        return z
+
+    def encode(self, text):
+        return self(text)
+
+# This is the one that gets used
 class FrozenCLIPEmbedder(AbstractEncoder):
     """Uses the CLIP transformer encoder for text (from Hugging Face)"""
     def __init__(self, version="openai/clip-vit-large-patch14", device="cuda", max_length=77):
@@ -159,6 +260,7 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         return z
 
     def encode(self, text):
+        #print(f'Frozen CLIP embedder running on {text}')
         return self(text)
 
 
@@ -187,6 +289,7 @@ class FrozenCLIPTextEmbedder(nn.Module):
         return z
 
     def encode(self, text):
+        print(f'Frozen CLIP text embedder running on {text}')
         z = self(text)
         if z.ndim==2:
             z = z[:, None, :]

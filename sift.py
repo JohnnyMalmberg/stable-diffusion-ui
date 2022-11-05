@@ -35,10 +35,10 @@ state.g_count = len(g_files)
 state.o_count = len(o_files)
 state.t_count = len(t_files)
 
-state.files = [f for f in state.files if f.endswith('.png')]
-g_files = [f for f in g_files if f.endswith('.png')]
-o_files = [f for f in o_files if f.endswith('.png')]
-t_files = [f for f in t_files if f.endswith('.png')]
+state.files = [f for f in state.files if f.endswith('.png') or f.endswith('.jpg')]
+g_files = [f for f in g_files if f.endswith('.png') or f.endswith('.jpg')]
+o_files = [f for f in o_files if f.endswith('.png') or f.endswith('.jpg')]
+t_files = [f for f in t_files if f.endswith('.png') or f.endswith('.jpg')]
 
 state.paths = [join(state.folder, f) for f in state.files]
 state.paths += [join(g_folder, f) for f in g_files]

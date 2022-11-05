@@ -4,3 +4,9 @@ models/sd-v1-4-o.ckpt
 models/sd-v1-4.ckpt
 *.pyc
 src
+clip_embeds
+aesthetic_embeddings
+inits
+k_diffusion_RENAMED
+k_diffusion
+src/taming-transformers
