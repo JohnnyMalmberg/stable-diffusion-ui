@@ -17,15 +17,15 @@ model:
     scale_factor: 0.18215
     use_ema: False
 
-    scheduler_config: # 10000 warmup steps
-      target: ldm.lr_scheduler.LambdaLinearScheduler
+    personalization_config:
+      target: ldm.modules.embedding_manager.EmbeddingManager
       params:
-        warm_up_steps: [ 10000 ]
-        cycle_lengths: [ 10000000000000 ] # incredibly large number to prevent corner cases
-        f_start: [ 1.e-6 ]
-        f_max: [ 1. ]
-        f_min: [ 1. ]
-
+        placeholder_strings: ["*"]
+        initializer_words: ["sculpture"]
+        per_image_tokens: false
+        num_vectors_per_token: 1
+        progressive_words: False
+        
     unet_config:
       target: ldm.modules.diffusionmodules.openaimodel.UNetModel
       params:
@@ -48,7 +48,6 @@ model:
       params:
         embed_dim: 4
         monitor: val/rec_loss
-        ckpt_path: "/home/johnim/ml-quickload/vae-ft-mse-840000-ema-pruned.ckpt"
         ddconfig:
           double_z: true
           z_channels: 4

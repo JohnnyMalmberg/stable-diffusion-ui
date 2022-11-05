@@ -1,0 +1,15 @@
+wh 512 512
+steps 100
+
+$for sam ['k_lms', 'k_dpm_2']
+    sampler $sam
+
+    $for x [x/2. for x in range(5)]
+
+        # $x
+        scale $x
+        $count y 2..4
+        
+            sharpen 0 $y
+            go
+            clear $y

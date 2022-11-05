@@ -1,0 +1,117 @@
+wh 512 512
+steps 100
+
+sampler k_lms
+
+
+# 0.0
+scale 0.0
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 0.5
+scale 0.5
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 1.0
+scale 1.0
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 1.5
+scale 1.5
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 2.0
+scale 2.0
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+sampler k_dpm_2
+
+
+# 0.0
+scale 0.0
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 0.5
+scale 0.5
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 1.0
+scale 1.0
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 1.5
+scale 1.5
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3
+
+# 2.0
+scale 2.0
+
+sharpen 0 2
+go
+clear 2
+
+sharpen 0 3
+go
+clear 3

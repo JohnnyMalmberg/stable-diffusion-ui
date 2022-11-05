@@ -1,0 +1,10 @@
+$for n [13,13,13,14,14,14,15,15,15,16,16,16,17,17,17,18,18,18,19,19,19,20,20,20]
+wh $n $n
+go
+sharpen 1 1.05
+color_match 2 0
+init 3
+save 1
+clear 1
+clear 2
+clear 3

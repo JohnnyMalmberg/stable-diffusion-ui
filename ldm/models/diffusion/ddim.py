@@ -76,6 +76,7 @@ class DDIMSampler(object):
                unconditional_guidance_scale=1.,
                unconditional_conditioning=None,
                # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
+               step_callback=lambda x:'',
                **kwargs
                ):
         if conditioning is not None:
@@ -107,6 +108,7 @@ class DDIMSampler(object):
                                                     log_every_t=log_every_t,
                                                     unconditional_guidance_scale=unconditional_guidance_scale,
                                                     unconditional_conditioning=unconditional_conditioning,
+                                                    step_callback=step_callback,
                                                     )
         return samples, intermediates
 
@@ -116,7 +118,7 @@ class DDIMSampler(object):
                       callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, log_every_t=100,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
-                      unconditional_guidance_scale=1., unconditional_conditioning=None,):
+                      unconditional_guidance_scale=1., unconditional_conditioning=None, step_callback=lambda x: '',):
         device = self.model.betas.device
         b = shape[0]
         if x_T is None:
@@ -139,6 +141,7 @@ class DDIMSampler(object):
 
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
+            step_callback(i + 1)
             ts = torch.full((b,), step, device=device, dtype=torch.long)
 
             if mask is not None:
@@ -154,7 +157,7 @@ class DDIMSampler(object):
                                       unconditional_conditioning=unconditional_conditioning)
             img, pred_x0 = outs
             if callback: callback(i)
-            if img_callback: img_callback(pred_x0, i)
+            if img_callback: img_callback(img, i)
 
             if index % log_every_t == 0 or index == total_steps - 1:
                 intermediates['x_inter'].append(img)
@@ -221,7 +224,7 @@ class DDIMSampler(object):
 
     @torch.no_grad()
     def decode(self, x_latent, cond, t_start, unconditional_guidance_scale=1.0, unconditional_conditioning=None,
-               use_original_steps=False):
+               use_original_steps=False, step_callback=None, img_callback=None):
 
         timesteps = np.arange(self.ddpm_num_timesteps) if use_original_steps else self.ddim_timesteps
         timesteps = timesteps[:t_start]
@@ -235,7 +238,9 @@ class DDIMSampler(object):
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((x_latent.shape[0],), step, device=x_latent.device, dtype=torch.long)
-            x_dec, _ = self.p_sample_ddim(x_dec, cond, ts, index=index, use_original_steps=use_original_steps,
+            x_dec, pred_x0 = self.p_sample_ddim(x_dec, cond, ts, index=index, use_original_steps=use_original_steps,
                                           unconditional_guidance_scale=unconditional_guidance_scale,
                                           unconditional_conditioning=unconditional_conditioning)
+            if step_callback: step_callback(i + 1)
+            if img_callback: img_callback(x_dec, i)
         return x_dec
