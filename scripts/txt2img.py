@@ -28,6 +28,7 @@ import numpy as np
 from omegaconf import OmegaConf
 from PIL import ImageTk, Image
 from tqdm import tqdm, trange
+from imwatermark import WatermarkEncoder
 from itertools import islice
 from einops import rearrange, repeat
 from torchvision.utils import make_grid
@@ -127,6 +128,7 @@ def sample_init(state, c, uc):
 
         kmodel_wrap_cfg = CFGDenoiser(kmodel_wrap)
         samples = K.sampling.__dict__[f'sample_{state.sampler_name[2:]}'](kmodel_wrap_cfg, init_noisy, sigma_sched, extra_args={'cond': c, 'uncond': uc, 'cond_scale': state.scale}, disable=False)
+
     else:
         if state.sampler_name == 'plms':
             raise Exception('No inits with PLMS :c')
