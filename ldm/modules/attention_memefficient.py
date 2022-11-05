@@ -1,3 +1,6 @@
+# optimized for memory usage at the cost of a little bit of speed.
+# i don't remember where i found this
+
 from inspect import isfunction
 import math
 import torch

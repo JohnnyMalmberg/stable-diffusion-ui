@@ -1,3 +1,6 @@
+# credit to Birch-san
+# https://github.com/Birch-san/stable-diffusion/pull/4/files
+
 from __future__ import annotations
 from inspect import isfunction
 import math

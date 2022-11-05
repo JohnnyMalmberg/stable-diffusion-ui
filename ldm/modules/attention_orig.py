@@ -1,3 +1,5 @@
+# the original attention.py from the CompVis repo
+
 from inspect import isfunction
 import math
 import torch
