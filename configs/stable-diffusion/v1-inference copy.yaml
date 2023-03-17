@@ -48,7 +48,7 @@ model:
       params:
         embed_dim: 4
         monitor: val/rec_loss
-        ckpt_path: "/run/media/johnim/ssd0/ml_models/ql/vae-ft-mse-840000-ema-pruned.ckpt"
+        ckpt_path: "/home/johnim/ml-quickload/vae-ft-mse-840000-ema-pruned.ckpt"
         ddconfig:
           double_z: true
           z_channels: 4

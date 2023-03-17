@@ -15,6 +15,7 @@ from torch import autocast, load, no_grad, clamp, stack, randn, lerp, cuda, devi
 from time import sleep
 
 import k_diffusion as K
+from k_diffusion.sampling import BrownianTreeNoiseSampler
 
 import tkinter as tk
 from tkinter import ttk
@@ -46,6 +47,11 @@ def patch_conv(**patch):
     c.__init__ = __init__
 
 #patch_conv(padding_mode='circular')
+
+class CmdCallback():
+    def __init__(self, on_done=None, on_start=None):
+        self.done = on_done
+        self.start = on_start
 
 def chunk(it, size):
     it = iter(it)
@@ -109,7 +115,7 @@ class CFGDenoiserCartesian(nn.Module):
             cond_in = cat([uncond, cond1])
             uncond, cond = self.inner_model(x_in, sigma_in, cond=cond_in).chunk(2)
             origin = uncond
-        elif interp == 1:
+        elif scale == 0:
             cond_in = cat([uncond, cond2])
             uncond, cond = self.inner_model(x_in, sigma_in, cond=cond_in).chunk(2)
             origin = uncond
@@ -216,8 +222,12 @@ def sample_init(state, c1, c2, uc):
     def i_callback(o):
         state.engine_status.config(text=f'{state.temp_status_text}, step {o["i"]+1}', fg='green')
         if o["i"] % state.update_modulus == 0:
-            state.progress_image = ImageResult(state.model.decode_first_stage(o['denoised'])[0], state, is_preview=True)
+            resized = nn.functional.interpolate(o["denoised"], size=(state.h , state.w), mode='bilinear')
+            state.progress_image = ImageResult(einsum('...lhw,lr -> ...rhw', resized, state.preview_matrix)[0], state, is_preview=True)
             state.update_progress_canvas()
+            w,h = state.progress_image.pil_image.size
+            state.transmission_queue.put((CODE_IMAGE_RESULT, w.to_bytes(4, 'little') + h.to_bytes(4, 'little') + state.progress_image.pil_image.tobytes()))
+            #state.progress_image = ImageResult(state.model.decode_first_stage(o['denoised'])[0], state, is_preview=True)
 
     (init_w, init_h) = state.init_image.size
     if init_w != state.w or init_h != state.h:
@@ -252,14 +262,14 @@ def sample_init(state, c1, c2, uc):
             kmodel_wrap_cfg = CFGMaskedDenoiser(kmodel_wrap)
             samples = K.sampling.__dict__[f'sample_{state.sampler_name[2:]}'](kmodel_wrap_cfg, init_noisy, sigma_sched, 
                         extra_args={'cond1': c1, 'cond2': c2, 'uncond': uc, 'scale': state.scale, 'mask': mask, 'x0': init_latent, 'xi': init_noisy, 'interp': state.interp}, 
-                        disable=False, 
-                        callback=i_callback)
+                        disable=False)#, 
+                        #callback=i_callback)
         else:
             kmodel_wrap_cfg = CFGDenoiserCartesian(kmodel_wrap)
-            samples = K.sampling.__dict__[f'sample_{state.sampler_name[2:]}'](kmodel_wrap_cfg, init_noisy, sigma_sched, 
+            samples = K.sampling.__dict__[f'sample_{state.sampler_name[2:]}'](kmodel_wrap_cfg, init_noisy, sigma_sched, #noise_sampler=BrownianTreeNoiseSampler(), 
                         extra_args={'cond1': c1, 'cond2': c2, 'uncond': uc, 'scale': state.scale, 'interp': state.interp}, 
-                        disable=False, 
-                        callback=i_callback)
+                        disable=False)#, 
+                        #callback=i_callback)
     else:
         if state.use_mask:
             print('Masking not yet implemented for non-k diffusers :c')
@@ -270,7 +280,7 @@ def sample_init(state, c1, c2, uc):
         sampler.make_schedule(ddim_num_steps=state.steps, ddim_eta=state.ddim_eta, verbose=False)
         z_enc = sampler.stochastic_encode(init_latent, tensor([t_enc]*state.batch_size).to(device("cuda")))
         samples = sampler.decode(z_enc, c1, t_enc, unconditional_guidance_scale=state.scale,
-                                                unconditional_conditioning=uc, step_callback=lambda i:state.engine_status.config(text=f'{state.temp_status_text}, step {i}', fg='green'), img_callback=i_callback_b)
+                                                unconditional_conditioning=uc, step_callback=lambda i:state.engine_status.config(text=f'{state.temp_status_text}, step {i}', fg='green'))#, img_callback=i_callback_b)
     return samples
 
 # "CFG" = classifier-free guidance
@@ -301,9 +311,9 @@ def sample(state, c1, c2, uc):
                                                                                 'cond2': c2, 
                                                                                 'uncond':uc, 
                                                                                 'scale': state.scale,
-                                                                                'interp': state.interp}, 
-                                                                            disable=False,
-                                                                            callback=i_callback)
+                                                                                'interp': state.interp},
+                                                                            disable=False)#,
+                                                                            #callback=i_callback)
     else:
         if state.sampler_name == 'plms':
             sampler = state.plms_sampler
@@ -318,12 +328,12 @@ def sample(state, c1, c2, uc):
                                     unconditional_guidance_scale=state.scale,
                                     unconditional_conditioning=uc,
                                     eta=state.ddim_eta,
-                                    x_T=state.start_code,
-                                    step_callback=lambda i:state.engine_status.config(text=f'{state.temp_status_text}, step {i}', fg='green'),
-                                    img_callback=i_callback_b)
+                                    x_T=state.start_code)#,
+                                    #step_callback=lambda i:state.engine_status.config(text=f'{state.temp_status_text}, step {i}', fg='green'),
+                                    #img_callback=i_callback_b)
     return samples
 
-def do_run(state):
+async def do_run(state):
     if not state.fixed_seed:
         state.seed = randint(1, 100_000_000)
     current_seed = seed_everything(state.seed)
@@ -384,14 +394,14 @@ def do_run(state):
                 if not state.mass_mode:
                     state.image_results.append(result)
                     w,h = result.pil_image.size
-                    state.transmission_queue.put((CODE_IMAGE_RESULT, w.to_bytes(4, 'little') + h.to_bytes(4, 'little') + result.pil_image.tobytes()))
+                    #state.transmission_queue.put((CODE_IMAGE_RESULT, w.to_bytes(4, 'little') + h.to_bytes(4, 'little') + result.pil_image.tobytes()))
         except Exception as e:
             for index, x_sample in enumerate(samples):
                 result = ImageResult(x_sample, state)
                 if not state.mass_mode:
                     state.image_results.append(result)
                     w,h = result.pil_image.size
-                    state.transmission_queue.put((CODE_IMAGE_RESULT, w.to_bytes(4, 'little') + h.to_bytes(4, 'little') + result.pil_image.tobytes()))
+                    #state.transmission_queue.put((CODE_IMAGE_RESULT, w.to_bytes(4, 'little') + h.to_bytes(4, 'little') + result.pil_image.tobytes()))
         
 
 
@@ -425,16 +435,18 @@ def do_file_command(command, args, state):
         return False
     return True
 
-def do_command(command, args, state):
-    #print(f"Command [{command}] args [{args}]")
+async def do_command(command, args, callbacks, state):
+    print(f"Command [{command}] args [{args}]")
+    if callbacks.start is not None:
+        state.discord_callbacks += [callbacks.start()]
     state.transmission_queue.put((CODE_COMMAND, f'[{command}] [{args}]'.encode('ascii')))
     if command == "exit":
         return False
-    state.engine_status.config(text='Command [{}] with args [{}]'.format(command, args), fg='blue')
+    #state.engine_status.config(text='Command [{}] with args [{}]'.format(command, args), fg='blue')
     if command == 'w':
         state.w = int(args) * 64
-    elif command == 'eval':
-        eval(args) # TODO delete this if this app ever accepts commands over the network
+    #elif command == 'eval':
+    #    eval(args) # TODO delete this if this app ever accepts commands over the network
     elif command == 'h':
         state.h = int(args) * 64
     elif command == 'wh':
@@ -448,17 +460,17 @@ def do_command(command, args, state):
     elif command == 'batch_size':
         state.batch_size = int(args)
     elif command == 'seed':
-        return set_seed(state, args)
+        set_seed(state, args)
     elif command == 'interp':
         state.interp = float(args)
     elif command == 'update_modulus':
         state.update_modulus = int(args)
     elif command == 'p':
-        return set_p1(state, args)
+        set_p1(state, args)
     elif command == 'p_secondary':
-        return set_p2(state, args)
+        set_p2(state, args)
     elif command == 'p_negative':
-        return set_neg_p(state, args)
+        set_neg_p(state, args)
     elif command == 'strength':
         state.strength = float(args)
     elif command == 'aes_steps':
@@ -492,10 +504,10 @@ def do_command(command, args, state):
         runs = 1 if args == "" else int(args)
         for run in range(runs):
             state.temp_status_text = f'Sample {run+1} of {runs}'
-            state.engine_status.config(text=state.temp_status_text, fg='green')
+            #state.engine_status.config(text=state.temp_status_text, fg='green')
             if not state.urgent_queue.empty():
-                return True
-            do_run(state)
+                return True # if there are weird reaction emoji shenanigans in the discord bot, look here
+            await do_run(state)
             gc.collect()
             cuda.empty_cache()
     elif command == "go-interp":
@@ -504,18 +516,21 @@ def do_command(command, args, state):
         interps = [x / (runs-1) for x in range(runs)]
         for index, interp in enumerate(interps):
             state.temp_status_text = f'Sample {index+1} of {runs}'
-            state.engine_status.config(text=state.temp_status_text, fg='green')
+            #state.engine_status.config(text=state.temp_status_text, fg='green')
             if not state.urgent_queue.empty():
-                return True
+                return True # if there are weird reaction emoji shenanigans in the discord bot, look here
             state.interp = interp
-            do_run(state)
+            await do_run(state)
             gc.collect()
             cuda.empty_cache()
         state.interp = original_interp
 
     else:
         print("[Unrecognized command]")
-    state.engine_status.config(text='Idle')
+    if callbacks.done is not None:
+        state.discord_callbacks += [callbacks.done()]
+    print('Command Done.')
+    #state.engine_status.config(text='Idle')
     return True
 
 def get_model(state):
@@ -540,7 +555,7 @@ def get_model(state):
 def set_start_code(state):
     state.start_code = randn([state.batch_size, state.c, state.h // state.f, state.w // state.f], device=device("cuda"))
 
-def backend_thread(state):
+async def backend_thread(state):
     state.preview_matrix = tensor(v1_4_latent_preview_matrix).to(device('cuda'))
 
     state.model = get_model(state)
@@ -559,16 +574,16 @@ def backend_thread(state):
         with precision_scope("cuda"):
             with state.model.ema_scope():
                 while should_continue:
-                    state.engine_status.config(text='Idle', fg='yellow')
+                    #state.engine_status.config(text='Idle', fg='yellow')
                     if not state.urgent_queue.empty():
                         (ucommand, uargs) = state.urgent_queue.get()
                         should_continue = do_ucommand(ucommand, uargs, state)
-                    (command, args) = state.command_queue.get()
+                    (command, args, callbacks) = state.command_queue.get()
                     try:
-                        should_continue = do_command(command, args, state)
+                        should_continue = await do_command(command, args, callbacks, state)
                     except Exception as ex:
-                        state.engine_status.config(text='[ERROR]', fg='red')
-                        print('[Exception | Backend | {}] {}'.format(ex, traceback.format_exc()))
+                        #state.engine_status.config(text='[ERROR]', fg='red')
+                        print(f'[Exception | Backend | {ex}] {traceback.format_exc()}')
                     gc.collect()
                     cuda.empty_cache()
 

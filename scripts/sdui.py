@@ -88,10 +88,29 @@ def main():
     state.ddim_eta = 0.0
     state.fixed_code = True
     state.steps = 50
-    # Options are lms, dpm_2_ancestral, dpm_2, euler_ancestral, euler, heun, plms, ddim
-    state.sampler_name = 'k_euler_ancestral'
+    # Options are lms, dpm_2_ancestral, dpm_2, euler_ancestral, euler, heun, plms, ddim, (and some more)
+
+    # Best:
+    # k_euler
+    # k_dpmpp_2m (similar result to k_e, but with "harsher" edges, which can be good or bad)
+    # k_euler_ancestral
+    # k_dpmpp_2s_ancestral (slower than the other 3, similar result to k_e_a)
+    # TODO: make a dropdown menu
+
+    # most other samplers are similar to those 4
+
+    # k_dpm_fast and _adaptive need more testing.
+
+    state.sampler_name = 'k_dpmpp_2m' #'k_euler_ancestral'
+
+    #state.ckpt = '/home/johnim/ml-quickload/pokemon.ckpt'
+    #state.ckpt = '/home/johnim/ml-quickload/mdjrny-v4.ckpt'
+    #state.ckpt = '/home/johnim/ml-quickload/jwst-deep-space.ckpt'
+    #state.ckpt = '/home/johnim/data-0/ml_models/sd_1/jwst-deep-space.ckpt'
+    #state.ckpt = '/home/johnim/ml-quickload/ctsmscl.ckpt'
     state.ckpt = '/home/johnim/ml-quickload/sd-v1-4-o.ckpt'
     #state.ckpt = '~/ml-quickload/v1-5-pruned-emaonly.ckpt'
+
     state.config = 'configs/stable-diffusion/v1-inference.yaml'
 
     # These require a reload of the whole model. That might be fixable? idk

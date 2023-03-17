@@ -25,6 +25,30 @@ def create_buffer(user_input):
             target.append(line)
     return preproc_buffer
 
+def serialize_buffer(buf, pfx=''):
+    out = []
+    if buf[0][0] == 'NOP':
+        for entry in buf[1:]:
+            if type(entry) == str:
+                out.append(pfx + entry)
+            elif type(entry) == list:
+                out.extend(serialize_buffer(entry, pfx + '  '))
+            else:
+                print('Bad preproc buffer construction')
+    elif buf[0][0] == 'FOR':
+        out.append(f'{pfx}for {buf[0][2]} in {buf[0][3]}:')
+        for entry in buf[1:]:
+            if type(entry) == str:
+                out.append(pfx + entry)
+            elif type(entry) == list:
+                out.extend(serialize_buffer(entry, pfx + '  '))
+            else:
+                print('Bad preproc buffer construction')
+    else:
+        print(f'Unknown buffertype {buf[0][0]}')
+    return out
+
+
 def process_buffer(buf):
     out = []
     if buf[0][0] == 'NOP':

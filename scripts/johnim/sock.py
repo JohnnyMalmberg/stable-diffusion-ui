@@ -40,6 +40,18 @@ CODE_EXIT = 69420
 CODE_COMMAND = 3
 CODE_IMAGE_RESULT = 1
 
+def fake_transmitter(state):
+    q = state.transmission_queue
+    while state.running:
+        try:
+            while not q.empty():
+                with q.mutex:
+                    q.clear()
+            time.sleep(3)
+        except:
+            pass
+
+
 def establish_transmitter(state):
     q = state.transmission_queue
 
