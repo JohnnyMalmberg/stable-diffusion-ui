@@ -4,7 +4,15 @@ import numpy as np
 from einops import rearrange
 import os
 import cv2
+import discord
 from skimage import exposure
+from io import BytesIO
+
+def save_torch(img, path):
+    to_pil_image(img).save(f'outputs/{path}.png')
+
+def save_torch_b(img, path):
+    to_pil_image_b(img).save(f'outputs/{path}.png')
 
 def load_torch_image(path):
     image = Image.open(path).convert("RGB")
@@ -33,6 +41,12 @@ def to_pil_image(torch_image):
     pil_image = Image.fromarray(np_image.astype(np.uint8))
     return pil_image
 
+def to_pil_image_b(torch_image):
+    clamped_image = clamp(torch_image, min=0.0, max=1.0)
+    np_image = 255. * rearrange(clamped_image.cpu().numpy(), 'c h w -> h w c')
+    pil_image = Image.fromarray(np_image.astype(np.uint8))
+    return pil_image
+
 def thumb_size(w, h):
     (b, s) = (h,w) if w < h else (w,h)
     b_t = 256 if s >= 256 else s
@@ -52,17 +66,21 @@ def sharpen(state, image_index, amount):
     image = sharpen.enhance(amount)
     return ImageResult(to_torch_image(image), state)
 
+discord_mode = True
+
 class ImageResult:
     def __init__(self, torch_image, state, loaded=False, is_preview=False):
         self.state = state
         self.torch_image = torch_image
         self.pil_image = to_pil_image(torch_image)
         self.seed = state.seed
-        self.tk = ImageTk.PhotoImage(self.pil_image)
         self.size = (self.pil_image.width, self.pil_image.height)
         self.thumb_size = thumb_size(self.pil_image.width, self.pil_image.height)
         self.thumb = self.pil_image.resize(self.thumb_size)
-        self.tk_thumb = ImageTk.PhotoImage(self.thumb)
+        if not discord_mode:
+            self.tk = ImageTk.PhotoImage(self.pil_image)
+            self.tk_thumb = ImageTk.PhotoImage(self.thumb)
+        self.is_moved = False
         self.is_shown = False
         self.was_loaded = loaded
         if state.mass_mode and not is_preview and not loaded:
@@ -76,7 +94,45 @@ class ImageResult:
         self.pil_image.save(os.path.join(self.state.outdir, name))
         self.state.base_count += 1
 
+    async def discord_send(self, channel, index):
+        self.is_shown = True
+        if not self.was_loaded:
+            name = f"{self.seed}_{self.state.base_count:03}.png"
+        else:
+            name = f"loaded_{self.state.base_count:03}.png"
+        with BytesIO() as binary:
+            self.pil_image.save(binary, 'PNG')
+            binary.seek(0)
+            await channel.send(f'Image at index {index}', file=discord.File(fp=binary, filename=name))
+
     def gimp(self):
         self.pil_image.save("/tmp/gimp_transfer.png")
         os.system("gimp /tmp/gimp_transfer.png &> /dev/null &")
 
+class ImageResultB:
+    def __init__(self, torch_image):#, state, loaded=False, is_preview=False):
+        #self.state = state
+        self.torch_image = torch_image
+        self.pil_image = to_pil_image(torch_image)
+        #self.seed = state.seed
+        #self.tk = ImageTk.PhotoImage(self.pil_image)
+        self.size = (self.pil_image.width, self.pil_image.height)
+        #self.thumb_size = thumb_size(self.pil_image.width, self.pil_image.height)
+        #self.thumb = self.pil_image.resize(self.thumb_size)
+        #self.tk_thumb = ImageTk.PhotoImage(self.thumb)
+        #self.is_shown = False
+        #self.was_loaded = loaded
+        #if state.mass_mode and not is_preview and not loaded:
+        #    self.save()
+
+    def save(self, path):
+        #if not self.was_loaded:
+        #    name = f"{self.seed}_{self.state.base_count:03}.png"
+        #else:
+        #    name = f"loaded_{self.state.base_count:03}.png"
+        self.pil_image.save(path)
+        #self.state.base_count += 1
+
+    def gimp(self):
+        self.pil_image.save("/tmp/gimp_transfer.png")
+        os.system("gimp /tmp/gimp_transfer.png &> /dev/null &")
